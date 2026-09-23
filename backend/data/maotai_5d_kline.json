@@ -1,0 +1,60 @@
+{
+  "ticker": "600519",
+  "thscode": "600519.SH",
+  "name": "贵州茅台",
+  "frequency": "daily",
+  "unit": "CNY",
+  "records_count": 5,
+  "data": [
+    {
+      "trade_date": "2026-09-17",
+      "open": 1240.00,
+      "high": 1255.00,
+      "low": 1238.00,
+      "close": 1250.00,
+      "volume": 2100000,
+      "turnover": 2618000000,
+      "change_pct": 1.20
+    },
+    {
+      "trade_date": "2026-09-18",
+      "open": 1252.00,
+      "high": 1268.00,
+      "low": 1248.00,
+      "close": 1262.50,
+      "volume": 2350000,
+      "turnover": 2958000000,
+      "change_pct": 1.00
+    },
+    {
+      "trade_date": "2026-09-19",
+      "open": 1265.00,
+      "high": 1280.00,
+      "low": 1260.00,
+      "close": 1276.00,
+      "volume": 2500000,
+      "turnover": 3180000000,
+      "change_pct": 1.07
+    },
+    {
+      "trade_date": "2026-09-22",
+      "open": 1270.00,
+      "high": 1275.00,
+      "low": 1250.00,
+      "close": 1253.80,
+      "volume": 2400000,
+      "turnover": 3020000000,
+      "change_pct": -1.74
+    },
+    {
+      "trade_date": "2026-09-23",
+      "open": 1255.03,
+      "high": 1271.50,
+      "low": 1251.00,
+      "close": 1252.77,
+      "volume": 2286943,
+      "turnover": 2878980100,
+      "change_pct": -0.08
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+name: "FinancialDataAnalystAgent"
+version: "1.0.0"
+description: "专业的量化与金融数据分析智能体，负责读取本地存储的行情数据（如K线JSON），进行短期趋势研判、量价指标计算与动量分析"
+
+# 模型选型偏好（默认使用 OpenAI gpt-5.6-luna）
+model:
+  provider: "openai"
+  model_name: "gpt-5.6-luna"
+  temperature: 0.0
+
+# 运行必需的环境变量（此处无需特殊外部 MCP Key，依赖模型 Key）
+required_env: []
+
+# 依赖的 MCP 服务（纯本地分析无需外部 MCP，保持空列表）
+mcp_servers: []
+
+# 绑定的专用 SOP / 技能文档
+skills:
+  - "./skills/trend_analysis_sop.md"
+
+# 特性支持
+enable_memory: true
+
+# 核心能力清单
+capabilities:
+  - "读取与校验本地历史 K 线 JSON 格式数据"
+  - "计算 5 日均线(MA5)、区间涨跌幅、极值振幅与量价配合度"
+  - "综合研判短期走势趋势（向上 / 向下 / 震荡盘整），并输出结构化量化归因"

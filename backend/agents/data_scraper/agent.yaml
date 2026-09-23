@@ -1,0 +1,41 @@
+name: "FinancialDataScraperAgent"
+version: "1.0.0"
+description: "专业的金融数据抓取智能体，负责通过同花顺(Fuyao) MCP 获取 A 股标的元信息、行情快照、历史K线、财务报表及市场特色数据"
+
+# 模型选型偏好
+model:
+  provider: "openai"
+  model_name: "gpt-5.6-luna"
+  temperature: 0.0
+
+# 运行必需的环境变量（用于加载时自检）
+required_env:
+  - "Financial-API-KEY"
+
+# 依赖的 MCP 服务（同花顺 Fuyao 金融数据标准 MCP）
+mcp_servers:
+  - name: "fuyao-meta"
+    url: "https://fuyao.aicubes.cn/mcp/meta"
+    transport: "streamable_http"
+    headers:
+      X-api-key: "${Financial-API-KEY}"
+
+  - name: "fuyao-a-share"
+    url: "https://fuyao.aicubes.cn/mcp/a-share"
+    transport: "streamable_http"
+    headers:
+      X-api-key: "${Financial-API-KEY}"
+
+# 绑定的专用 SOP / 技能文档
+skills:
+  - "./skills/financial_data_fetch_sop.md"
+
+# 特性支持
+enable_memory: true
+
+# 核心能力清单
+capabilities:
+  - "标的检索与证券代码跨市场消歧（如股票、ETF代码规范解析）"
+  - "A股全市场股票行情实时快照与历史日K、分时行情拉取"
+  - "上市公司资产负债表、利润表、现金流量表与关键财务指标抓取"
+  - "涨跌停池、炸板、龙虎榜与个股异动分析等同花顺特色功能数据获取"
