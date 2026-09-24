@@ -32,6 +32,8 @@ skills:
 
 # 特性支持
 enable_memory: true
+enable_code_sandbox: true
+enable_todo_list: true
 
 # 核心能力清单
 capabilities:

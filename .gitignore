@@ -6,7 +6,28 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Database files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# MultiAgent Workspace Runtime (动态运行数据与隔离沙箱)
+workspace/runtime/*
+!workspace/runtime/.gitkeep
+!workspace/runtime/sessions/.gitkeep
+!workspace/runtime/sandboxes/.gitkeep
+!workspace/runtime/logs/.gitkeep
+workspace/sandboxes/
+workspace/sessions.db*
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments & Secrets
 .venv
 .env
 *.env

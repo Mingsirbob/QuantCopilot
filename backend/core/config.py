@@ -5,7 +5,7 @@ Agent 配置定义模块
 
 import os
 from typing import Any, Callable, List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -55,11 +55,62 @@ class AgentConfig(BaseModel):
     )
 
     # 记忆与调试
-    enable_memory: bool = Field(default=True, description="是否启用短期对话记忆")
+    enable_memory: bool = Field(default=True, description="是否启用会话持久化记忆")
+    session_db_path: Optional[str] = Field(
+        default=None,
+        description="SQLite 会话数据库路径，默认集中存储于 workspace/sessions.db",
+    )
     debug: bool = Field(default=False, description="是否开启调试输出")
 
-    class Config:
-        arbitrary_types_allowed = True
+    # 专属独立工作空间与代码执行能力
+    enable_code_sandbox: bool = Field(
+        default=False,
+        description="是否为此 Agent 开启专属独立工作空间与 Python 代码执行能力",
+    )
+    sandbox_dir: Optional[str] = Field(
+        default=None,
+        description="自定义沙箱工作空间根目录，若不指定则默认为 workspace/sandboxes/{agent_name}",
+    )
+
+    # 智能上下文压缩机制 (5大核心策略)
+    enable_context_compression: bool = Field(
+        default=True,
+        description="是否启用智能上下文压缩（包含工具精简、大模型摘要、滑动窗口与Token预算控制）",
+    )
+    context_token_budget: int = Field(
+        default=4000,
+        description="上下文总 Token 预算上限",
+    )
+    context_tool_max_len: int = Field(
+        default=300,
+        description="历史工具返回精简折叠的最大保留字符数",
+    )
+    context_window_keep_messages: int = Field(
+        default=6,
+        description="滑动窗口保留的最近对话消息条数",
+    )
+
+    # 待办任务清单管理 (Todo Planning)
+    enable_todo_list: bool = Field(
+        default=False,
+        description="是否挂载待办任务清单中间件，支持复杂长任务结构化拆解与跟踪",
+    )
+
+    # 安全审批围栏 (Tool Approval Fence)
+    enable_tool_approval: bool = Field(
+        default=False,
+        description="是否启用安全审批围栏（对敏感操作如代码执行、写文件等要求人类介入审批）",
+    )
+    sensitive_tools: List[str] = Field(
+        default_factory=lambda: ["execute_python_code", "write_file"],
+        description="需要安全审批拦截的敏感工具清单",
+    )
+    approval_whitelist: List[str] = Field(
+        default_factory=list,
+        description="免审批白名单工具清单（如用户勾选'不再询问'）",
+    )
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def from_env(
@@ -105,6 +156,18 @@ class AgentConfig(BaseModel):
             "timeout": float(os.getenv("TIMEOUT_SECONDS", "120")),
             "max_retries": int(os.getenv("MAX_RETRIES", "2")),
             "tools": tools or [],
+            "enable_context_compression": os.getenv("ENABLE_CONTEXT_COMPRESSION", "true").lower() in ("true", "1", "yes"),
+            "context_token_budget": int(os.getenv("CONTEXT_TOKEN_BUDGET", "4000")),
+            "context_tool_max_len": int(os.getenv("CONTEXT_TOOL_MAX_LEN", "300")),
+            "context_window_keep_messages": int(os.getenv("CONTEXT_WINDOW_KEEP_MESSAGES", "6")),
+            "enable_todo_list": os.getenv("ENABLE_TODO_LIST", "false").lower() in ("true", "1", "yes"),
+            "enable_tool_approval": os.getenv("ENABLE_TOOL_APPROVAL", "false").lower() in ("true", "1", "yes"),
+            "sensitive_tools": [
+                t.strip() for t in os.getenv("SENSITIVE_TOOLS", "execute_python_code,write_file").split(",") if t.strip()
+            ],
+            "approval_whitelist": [
+                t.strip() for t in os.getenv("APPROVAL_WHITELIST", "").split(",") if t.strip()
+            ],
         }
 
         if system_prompt:

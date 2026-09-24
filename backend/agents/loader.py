@@ -23,6 +23,36 @@ load_dotenv(_current_dir.parent.parent / ".env")
 load_dotenv(_current_dir.parent / ".env")
 load_dotenv()
 
+from mcp.types import CallToolResult, TextContent
+from langchain_mcp_adapters.interceptors import ToolCallInterceptor, MCPToolCallRequest
+
+
+class SafeMCPToolCallInterceptor(ToolCallInterceptor):
+    """
+    LangChain 官方标准 MCP 工具调用拦截器。
+    用于接管第三方 MCP 服务端协议不严格（如休市时返回 null 与其声明的 schema 冲突）、网络抖动等异常，
+    将其转化为友好的结构化说明反馈给大模型，避免因外部服务协议偏差导致 Agent 进程中断崩溃。
+    """
+
+    async def __call__(self, request: MCPToolCallRequest, handler):
+        try:
+            return await handler(request)
+        except Exception as e:
+            err_msg = str(e)
+            if "Invalid structured content returned by tool" in err_msg:
+                # 典型场景：同花顺等服务端在周末/非交易日返回了 null，但其 schema 未声明 null 类型
+                desc = (
+                    f"工具 '{request.name}' 执行完毕，但服务端返回的数据字段为 null 或未满足其声明的 Schema。"
+                    f" 若当前查询的是周末/法定休市日，属于该日期区间无交易行情的正常现象。"
+                )
+            else:
+                desc = f"工具 '{request.name}' 调用时发生外部服务端异常: {err_msg}"
+
+            return CallToolResult(
+                content=[TextContent(type="text", text=desc)],
+                isError=False,
+            )
+
 
 def _resolve_env_vars(text: str) -> str:
     """替换配置字符串中的环境变量占位符，例如 ${Financial-API-KEY}"""
@@ -55,20 +85,45 @@ def _resolve_env_in_dict(data: Any) -> Any:
 
 
 class AgentTemplateLoader:
-    """Agent 模板加载器"""
+    """Agent 工作区加载器，负责从用户工作区 (workspace/agents) 加载已配置的 Agent 资产"""
 
     def __init__(self, base_agents_dir: Optional[Union[str, Path]] = None):
-        if base_agents_dir is None:
-            # 默认指向当前项目下的 agents 目录
-            self.base_agents_dir = Path(__file__).resolve().parent
-        else:
+        if base_agents_dir is not None:
             self.base_agents_dir = Path(base_agents_dir).resolve()
+        else:
+            # 1. 优先读取环境变量指定的路径
+            env_ws = os.getenv("WORKSPACE_AGENTS_DIR") or os.getenv("WORKSPACE_DIR")
+            if env_ws:
+                p = Path(env_ws).resolve()
+                self.base_agents_dir = p if p.name == "agents" else p / "agents"
+            else:
+                # 2. 默认定位项目根目录下的 workspace/agents
+                project_root = Path(__file__).resolve().parent.parent.parent
+                ws_dir = project_root / "workspace" / "agents"
+                if ws_dir.exists():
+                    self.base_agents_dir = ws_dir
+                else:
+                    self.base_agents_dir = Path("workspace/agents").resolve()
+
+    def list_available_agents(self) -> List[str]:
+        """列出当前工作区中所有已配置的 Agent 名称"""
+        if not self.base_agents_dir.exists():
+            return []
+        agents = []
+        for p in self.base_agents_dir.iterdir():
+            if p.is_dir() and (p / "agent.yaml").exists():
+                agents.append(p.name)
+        return sorted(agents)
 
     def get_agent_path(self, agent_name: str) -> Path:
         """根据名称获取 Agent 目录路径"""
         agent_dir = self.base_agents_dir / agent_name
         if not agent_dir.exists() or not agent_dir.is_dir():
-            raise FileNotFoundError(f"未找到 Agent 模板目录: {agent_dir}")
+            available = self.list_available_agents()
+            raise FileNotFoundError(
+                f"在工作区 '{self.base_agents_dir}' 中未找到 Agent: '{agent_name}'。"
+                f" 当前可用 Agent: {available if available else '无(空工作区)'}"
+            )
         return agent_dir
 
     def load_spec(self, agent_name: str) -> Dict[str, Any]:
@@ -127,9 +182,25 @@ class AgentTemplateLoader:
                 "timeout": 30.0,
             }
 
-        client = MultiServerMCPClient(connections=connections)
-        tools = await client.get_tools()
-        return list(tools)
+        max_retries = 3
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                client = MultiServerMCPClient(
+                    connections=connections,
+                    tool_interceptors=[SafeMCPToolCallInterceptor()],
+                )
+                tools = await client.get_tools()
+                return list(tools)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    print(f"⚠️ 连接 MCP 服务失败 (第 {attempt} 次尝试): {e}，2秒后重试...")
+                    await asyncio.sleep(2)
+                else:
+                    print(f"❌ 连接 MCP 服务重试 {max_retries} 次后失败: {e}")
+                    raise last_error
+        return []
 
     async def load_agent(
         self,
@@ -196,7 +267,35 @@ class AgentTemplateLoader:
             "temperature": model_spec.get("temperature", 0.0),
             "tools": all_tools,
             "enable_memory": spec.get("enable_memory", True),
+            "enable_code_sandbox": spec.get("enable_code_sandbox", False),
+            "sandbox_dir": spec.get("sandbox_dir"),
         }
+
+        # 解析上下文压缩参数（支持 context_compression 字典或顶层字段）
+        comp_spec = spec.get("context_compression", {})
+        if "enable_context_compression" in spec:
+            agent_params["enable_context_compression"] = spec["enable_context_compression"]
+        elif "enable" in comp_spec:
+            agent_params["enable_context_compression"] = comp_spec["enable"]
+
+        if "token_budget" in comp_spec:
+            agent_params["context_token_budget"] = comp_spec["token_budget"]
+        if "max_tool_chars" in comp_spec:
+            agent_params["context_tool_max_len"] = comp_spec["max_tool_chars"]
+        if "keep_recent_messages" in comp_spec:
+            agent_params["context_window_keep_messages"] = comp_spec["keep_recent_messages"]
+
+        # 解析待办任务清单开关
+        if "enable_todo_list" in spec:
+            agent_params["enable_todo_list"] = spec["enable_todo_list"]
+
+        # 解析安全审批围栏开关与敏感工具
+        if "enable_tool_approval" in spec:
+            agent_params["enable_tool_approval"] = spec["enable_tool_approval"]
+        if "sensitive_tools" in spec:
+            agent_params["sensitive_tools"] = spec["sensitive_tools"]
+        if "approval_whitelist" in spec:
+            agent_params["approval_whitelist"] = spec["approval_whitelist"]
 
         # 应用外部覆盖
         if override_config:
@@ -205,7 +304,15 @@ class AgentTemplateLoader:
         # 从环境创建基础配置，并在其上叠加模板参数
         config = AgentConfig.from_env(**agent_params)
 
-        return build_agent(config)
+        # 5. 如果启用了记忆，异步获取并初始化持久化 SessionManager
+        session_manager = None
+        checkpointer = None
+        if config.enable_memory:
+            from core.session_manager import SessionManager
+            session_manager = await SessionManager.get_instance(config.session_db_path)
+            checkpointer = session_manager.get_checkpointer()
+
+        return build_agent(config, session_manager=session_manager, checkpointer=checkpointer)
 
 
 # 便捷模块级加载函数

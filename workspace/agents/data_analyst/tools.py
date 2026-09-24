@@ -11,12 +11,18 @@ from langchain_core.tools import tool
 
 
 def _resolve_file_path(file_path: str) -> Optional[str]:
-    """自适应探测文件路径，兼顾从根目录或 backend 目录下调用的场景"""
+    """自适应探测文件路径，优先查找 workspace/ 以及当前工作区"""
+    raw_p = Path(file_path)
+    file_name = raw_p.name
+    project_root = Path(__file__).resolve().parent.parent.parent.parent  # 项目根目录
+
     candidates = [
-        Path(file_path),
-        Path("backend") / file_path,
-        Path(__file__).resolve().parent.parent.parent / file_path,
-        Path(__file__).resolve().parent.parent.parent / file_path.replace("backend/", ""),
+        raw_p,
+        Path("workspace") / file_path,
+        Path("workspace/data") / file_name,
+        project_root / "workspace" / file_path,
+        project_root / "workspace" / "data" / file_name,
+        project_root / file_path,
     ]
     for p in candidates:
         if p.exists() and p.is_file():

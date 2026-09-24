@@ -5,6 +5,7 @@ MultiAgent 主程序入口 (官方标准原生异步架构)
 2. 【量化数据分析 Agent】(data_analyst): 读取 5 日 K 线 JSON 数据并研判走势趋势
 """
 
+import os
 import sys
 import asyncio
 from pathlib import Path
@@ -22,15 +23,20 @@ load_dotenv(backend_dir / ".env")
 # 确保在 Windows 控制台下输出中文正常显示
 sys.stdout.reconfigure(encoding="utf-8")
 
-from agents import load_agent
+from agents import load_agent, list_available_agents
 
 
 async def main():
     print("=" * 75)
+    print("📂 【系统初始化】正在扫描用户资产工作区 (workspace/agents)...")
+    available_agents = list_available_agents()
+    print(f"📋 当前工作区中已发现的用户配置 Agent: {available_agents}")
+    print("=" * 75)
+
     print("🚀 【阶段一】原生异步加载并运行【数据抓取 Agent (data_scraper)】...")
     print("=" * 75)
 
-    # 1. 异步加载数据抓取 Agent（全流程在官方原生事件循环中运行）
+    # 1. 从 workspace/agents/ 异步加载数据抓取 Agent
     scraper_agent = await load_agent("data_scraper")
     print(f"✅ 加载成功: {scraper_agent}")
     print(f"🛠️ 已自动接入 MCP 外部工具数量: {len(scraper_agent.config.tools)} 个\n")
@@ -52,16 +58,33 @@ async def main():
 
     query_analysis = (
         "请帮我读取并分析 'data/maotai_5d_kline.json' 中的 5 个交易日数据，"
-        "研判贵州茅台的短期走势趋势是向上还是向下，并给出具体的分析依据。"
+        "研判贵州茅台的短期走势趋势是向上还是向下，并请在你的专属工作空间中将完整的研报保存为 'reports/maotai_analysis.md' 文件。"
     )
     print(f"👤 用户: {query_analysis}")
-    print("⏳ Agent 正在调用数据分析工具计算量化指标与技术研判...\n")
+    print("⏳ Agent 正在调用数据分析与独立沙箱工具...\n")
     analysis_result = await analyst_agent.arun(query_analysis, thread_id="analyst_session")
     print("🤖 数据分析 Agent 研报:\n")
     print(analysis_result)
     print("=" * 75)
 
+    # 3. 验证专属沙箱内生成的文件产物
+    if analyst_agent.sandbox:
+        print(f"📦 【沙箱验证】Agent 专属工作空间目录: {analyst_agent.sandbox.sandbox_dir}")
+        print("📁 沙箱内部现有文件列表:")
+        for root, dirs, files in os.walk(analyst_agent.sandbox.sandbox_dir):
+            for file in files:
+                rel = Path(root, file).relative_to(analyst_agent.sandbox.sandbox_dir)
+                size = Path(root, file).stat().st_size
+                print(f"   └── {rel} ({size} 字节)")
+    print("=" * 75)
+
 
 if __name__ == "__main__":
-    # 官方标准唯一入口：从头到尾由原生事件循环统一托管
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 用户手动终止。")
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
