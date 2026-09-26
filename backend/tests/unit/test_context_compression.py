@@ -25,16 +25,17 @@ backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from core.config import AgentConfig
-from core.builder import build_agent
-from core.context_compression import (
+from core import AgentConfig, build_agent
+from core.memory import (
     count_tokens,
     compact_tool_messages,
-    summarize_messages_sync,
-    summarize_messages_async,
     trim_history,
     TokenBudgetComposedCompressor,
     ContextCompressionMiddleware,
+)
+from core.memory.compression import (
+    summarize_messages_sync,
+    summarize_messages_async,
 )
 
 

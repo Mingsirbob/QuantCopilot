@@ -14,8 +14,7 @@ from dotenv import load_dotenv
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from core.config import AgentConfig
-from core.builder import build_agent, StandaloneAgent
+from core import AgentConfig, build_agent, StandaloneAgent
 
 # 确保向上查找并加载根目录与 backend 目录的 .env
 _current_dir = Path(__file__).resolve().parent
@@ -143,24 +142,116 @@ class AgentTemplateLoader:
         agent_dir = self.get_agent_path(agent_name)
         prompt_parts: List[str] = []
 
+        # 0. 若开启长期记忆，自动预载用户画像偏好并注入顶部
+        if spec.get("enable_long_term_memory"):
+            from core.memory import LongTermMemoryManager
+            mem_mgr = LongTermMemoryManager.get_instance()
+            user_profile = mem_mgr.get_user_profile()
+            prompt_parts.append(
+                f"========================================\n"
+                f"【核心长期记忆：用户投资画像与全局偏好】\n"
+                f"{user_profile}\n"
+                f"========================================"
+            )
+
         # 1. 主人设 prompt.md
         prompt_path = agent_dir / "prompt.md"
         if prompt_path.exists():
             with open(prompt_path, "r", encoding="utf-8") as f:
                 prompt_parts.append(f.read().strip())
 
-        # 2. 附加 skills/*.md 文档
+        # 2. 附加技能包（支持目录即技能、公共/私有仓库寻址、二次披露 references）
         declared_skills = spec.get("skills", [])
-        for skill_rel_path in declared_skills:
-            skill_file = (agent_dir / skill_rel_path).resolve()
-            if skill_file.exists():
-                with open(skill_file, "r", encoding="utf-8") as f:
-                    skill_content = f.read().strip()
+        workspace_root = agent_dir.parent.parent  # workspace 根目录
+        shared_skills_repo = (workspace_root / "skills").resolve()
+        agent_private_skills_dir = (agent_dir / "skills").resolve()
+
+        for skill_ref in declared_skills:
+            if not isinstance(skill_ref, str) or not skill_ref.strip():
+                continue
+            skill_ref = skill_ref.strip()
+
+            target_skill_dir: Optional[Path] = None
+            direct_file: Optional[Path] = None
+
+            # 寻址规则 1：以 "@skills/" 或 "@shared/" 开头 -> 显式指定公共技能仓库
+            if skill_ref.startswith("@skills/") or skill_ref.startswith("@shared/"):
+                sub_path = skill_ref.split("/", 1)[1]
+                cand = (shared_skills_repo / sub_path).resolve()
+                if cand.is_dir():
+                    target_skill_dir = cand
+                elif cand.is_file():
+                    direct_file = cand
+
+            # 寻址规则 2：以 "./" 开头 -> 显式指定当前 Agent 专属私有目录
+            elif skill_ref.startswith("./"):
+                cand = (agent_dir / skill_ref).resolve()
+                if cand.is_dir():
+                    target_skill_dir = cand
+                elif cand.is_file():
+                    direct_file = cand
+
+            # 寻址规则 3：简写名称（例如 "trend_analysis" 或 "trend_analysis_sop.md"）
+            # 优先级：公共技能仓库优先，其次查找 Agent 私有技能目录
+            else:
+                cand_shared_dir = shared_skills_repo / skill_ref
+                cand_shared_file = shared_skills_repo / f"{skill_ref}.md"
+                cand_local_dir = agent_private_skills_dir / skill_ref
+                cand_local_file = agent_private_skills_dir / skill_ref
+
+                if cand_shared_dir.is_dir():
+                    target_skill_dir = cand_shared_dir.resolve()
+                elif cand_shared_file.is_file():
+                    direct_file = cand_shared_file.resolve()
+                elif cand_local_dir.is_dir():
+                    target_skill_dir = cand_local_dir.resolve()
+                elif cand_local_file.is_file():
+                    direct_file = cand_local_file.resolve()
+
+            # 解析执行：若定位到标准 Skill 目录（包含 SKILL.md / skill.md）
+            if target_skill_dir and target_skill_dir.exists():
+                skill_entry = target_skill_dir / "SKILL.md"
+                if not skill_entry.exists():
+                    skill_entry = target_skill_dir / "skill.md"
+
+                skill_text_blocks = []
+                skill_name = target_skill_dir.name
+
+                if skill_entry.exists():
+                    with open(skill_entry, "r", encoding="utf-8") as f:
+                        entry_content = f.read().strip()
+                        skill_text_blocks.append(entry_content)
+
+                # 二次披露 (Progressive Disclosure)：自动加载 references/ 深度参考手册
+                references_dir = target_skill_dir / "references"
+                if references_dir.exists() and references_dir.is_dir():
+                    ref_files = sorted(references_dir.glob("*.md"))
+                    for ref_f in ref_files:
+                        with open(ref_f, "r", encoding="utf-8") as rf:
+                            ref_content = rf.read().strip()
+                            skill_text_blocks.append(
+                                f"\n\n--- [技能二次披露/深度参考: {ref_f.name}] ---\n{ref_content}"
+                            )
+
+                if skill_text_blocks:
+                    joined_skill = "\n\n".join(skill_text_blocks)
                     prompt_parts.append(
-                        f"\n\n--- [附带技能参考: {skill_file.name}] ---\n{skill_content}"
+                        f"\n\n========================================\n"
+                        f"【装载专业技能包: {skill_name}】\n"
+                        f"{joined_skill}\n"
+                        f"========================================"
+                    )
+
+            # 兼容执行：若为单个老版 .md 技能文件
+            elif direct_file and direct_file.exists():
+                with open(direct_file, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    prompt_parts.append(
+                        f"\n\n--- [技能参考: {direct_file.name}] ---\n{content}"
                     )
 
         return "\n\n".join(prompt_parts)
+
 
     async def connect_mcp_servers_async(self, spec: Dict[str, Any]) -> List[BaseTool]:
         """根据 spec 配置连接对应的 MCP 服务端并拉取 tools"""
@@ -238,6 +329,7 @@ class AgentTemplateLoader:
         # 检查并加载 Agent 目录内的本地 tools.py (若存在)
         agent_dir = self.get_agent_path(agent_name)
         local_tools_path = agent_dir / "tools.py"
+        local_tool_map = {}
         if local_tools_path.exists():
             import importlib.util
             spec_module = importlib.util.spec_from_file_location(
@@ -247,12 +339,31 @@ class AgentTemplateLoader:
                 tools_module = importlib.util.module_from_spec(spec_module)
                 spec_module.loader.exec_module(tools_module)
                 if hasattr(tools_module, "LOCAL_TOOLS"):
-                    all_tools.extend(tools_module.LOCAL_TOOLS)
-                else:
-                    for attr_name in dir(tools_module):
-                        attr = getattr(tools_module, attr_name)
-                        if isinstance(attr, BaseTool) and attr not in all_tools:
-                            all_tools.append(attr)
+                    for t in tools_module.LOCAL_TOOLS:
+                        if isinstance(t, BaseTool):
+                            local_tool_map[getattr(t, "name", str(t))] = t
+                for attr_name in dir(tools_module):
+                    attr = getattr(tools_module, attr_name)
+                    if isinstance(attr, BaseTool):
+                        local_tool_map[getattr(attr, "name", attr_name)] = attr
+
+        # 检查核心通用内置工具映射 (core.tools)
+        from core.tools import DEFAULT_TOOLS
+        builtin_tool_map = {getattr(t, "name", str(t)): t for t in DEFAULT_TOOLS}
+
+        # 如果 agent.yaml 显式配置了 tools 列表，按配置选配；否则默认加入所有本地发现的工具
+        declared_tool_names = spec.get("tools")
+        if declared_tool_names is not None and isinstance(declared_tool_names, list):
+            for t_name in declared_tool_names:
+                if t_name in local_tool_map and local_tool_map[t_name] not in all_tools:
+                    all_tools.append(local_tool_map[t_name])
+                elif t_name in builtin_tool_map and builtin_tool_map[t_name] not in all_tools:
+                    all_tools.append(builtin_tool_map[t_name])
+        else:
+            # 兼容默认行为：注入该 Agent 的所有 local tools
+            for t in local_tool_map.values():
+                if t not in all_tools:
+                    all_tools.append(t)
 
         if extra_tools:
             all_tools.extend(extra_tools)
@@ -289,6 +400,10 @@ class AgentTemplateLoader:
         if "enable_todo_list" in spec:
             agent_params["enable_todo_list"] = spec["enable_todo_list"]
 
+        # 解析长期记忆开关
+        if "enable_long_term_memory" in spec:
+            agent_params["enable_long_term_memory"] = spec["enable_long_term_memory"]
+
         # 解析安全审批围栏开关与敏感工具
         if "enable_tool_approval" in spec:
             agent_params["enable_tool_approval"] = spec["enable_tool_approval"]
@@ -308,7 +423,7 @@ class AgentTemplateLoader:
         session_manager = None
         checkpointer = None
         if config.enable_memory:
-            from core.session_manager import SessionManager
+            from core.memory import SessionManager
             session_manager = await SessionManager.get_instance(config.session_db_path)
             checkpointer = session_manager.get_checkpointer()
 

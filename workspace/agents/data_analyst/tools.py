@@ -20,14 +20,21 @@ def _resolve_file_path(file_path: str) -> Optional[str]:
         raw_p,
         Path("workspace") / file_path,
         Path("workspace/data") / file_name,
+        Path("workspace/runtime/sandboxes/FinancialDataScraperAgent") / file_name,
+        Path("workspace/runtime/sandboxes/FinancialDataScraperAgent") / file_path,
+        Path("workspace/runtime/sandboxes/FinancialDataAnalystAgent") / file_name,
         project_root / "workspace" / file_path,
         project_root / "workspace" / "data" / file_name,
+        project_root / "workspace" / "runtime" / "sandboxes" / "FinancialDataScraperAgent" / file_name,
+        project_root / "workspace" / "runtime" / "sandboxes" / "FinancialDataScraperAgent" / file_path,
+        project_root / "workspace" / "runtime" / "sandboxes" / "FinancialDataAnalystAgent" / file_name,
         project_root / file_path,
     ]
     for p in candidates:
         if p.exists() and p.is_file():
             return str(p.resolve())
     return None
+
 
 
 @tool

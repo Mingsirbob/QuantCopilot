@@ -21,7 +21,7 @@ load_dotenv(backend_dir.parent / ".env")
 load_dotenv(backend_dir / ".env")
 
 from agents import load_agent
-from core.session_manager import SessionManager
+from core.memory import SessionManager
 
 
 @pytest.mark.asyncio

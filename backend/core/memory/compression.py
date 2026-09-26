@@ -26,7 +26,7 @@ from langchain_core.messages import (
     trim_messages,
 )
 
-logger = logging.getLogger("core.context_compression")
+logger = logging.getLogger("core.memory.compression")
 
 # 初始化 Token 计数器
 try:
@@ -156,6 +156,41 @@ def _heuristic_summary(messages: Sequence[BaseMessage]) -> str:
     return "早期对话主要互动要点：\n" + "\n".join(points[:6])
 
 
+def _ensure_tool_call_integrity(early: List[BaseMessage], recent: List[BaseMessage]):
+    """
+    检查 tool_call 与 ToolMessage 的事务完整性。
+    若 recent 中的消息包含孤立 ToolMessage，或 early 中的 AIMessage 含有 tool_calls 但 ToolMessage 被分到了 recent，
+    向前移动边界，确保同一个 tool_call 的触发与响应成对出现。
+    """
+    while early:
+        recent_tool_ids = {
+            getattr(m, "tool_call_id", None)
+            for m in recent
+            if isinstance(m, ToolMessage)
+        }
+        recent_call_ids = set()
+        for m in recent:
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    recent_call_ids.add(tc.get("id"))
+
+        orphan_tool_ids = recent_tool_ids - recent_call_ids
+
+        early_call_ids = set()
+        for m in early:
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    early_call_ids.add(tc.get("id"))
+        split_call_ids = early_call_ids & recent_tool_ids
+
+        if not orphan_tool_ids and not split_call_ids:
+            break
+
+        recent.insert(0, early.pop())
+
+    return early, recent
+
+
 def summarize_messages_sync(
     messages: Sequence[BaseMessage],
     keep_recent_messages: int = 6,
@@ -165,12 +200,10 @@ def summarize_messages_sync(
     if len(messages) <= keep_recent_messages + 1:
         return list(messages)
 
-    early_messages = messages[:-keep_recent_messages]
+    early_messages = list(messages[:-keep_recent_messages])
     recent_messages = list(messages[-keep_recent_messages:])
 
-    # 确保 recent_messages 起始于 HumanMessage，防止孤立的 ToolMessage/AIMessage
-    while recent_messages and not isinstance(recent_messages[0], HumanMessage):
-        early_messages = list(early_messages) + [recent_messages.pop(0)]
+    early_messages, recent_messages = _ensure_tool_call_integrity(early_messages, recent_messages)
 
     if not early_messages:
         return recent_messages
@@ -203,11 +236,10 @@ async def summarize_messages_async(
     if len(messages) <= keep_recent_messages + 1:
         return list(messages)
 
-    early_messages = messages[:-keep_recent_messages]
+    early_messages = list(messages[:-keep_recent_messages])
     recent_messages = list(messages[-keep_recent_messages:])
 
-    while recent_messages and not isinstance(recent_messages[0], HumanMessage):
-        early_messages = list(early_messages) + [recent_messages.pop(0)]
+    early_messages, recent_messages = _ensure_tool_call_integrity(early_messages, recent_messages)
 
     if not early_messages:
         return recent_messages
@@ -258,10 +290,25 @@ def trim_history(
             include_system=include_system,
             allow_partial=False,
         )
-        return trimmed
+        # 再次确保没有任何孤立的 ToolMessage 缺少对应的 AIMessage tool_call
+        valid_msgs = []
+        call_ids_seen = set()
+        for m in trimmed:
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    call_ids_seen.add(tc.get("id"))
+                valid_msgs.append(m)
+            elif isinstance(m, ToolMessage):
+                if getattr(m, "tool_call_id", None) in call_ids_seen:
+                    valid_msgs.append(m)
+                else:
+                    logger.debug(f"丢弃无前置 AIMessage 的孤立 ToolMessage: {m.tool_call_id}")
+            else:
+                valid_msgs.append(m)
+        return valid_msgs
+
     except Exception as e:
         logger.warning(f"trim_messages 执行异常，采用安全切片回退: {e}")
-        # 回退：直接截取最近 4 条
         return list(messages[-4:])
 
 
@@ -296,16 +343,13 @@ class TokenBudgetComposedCompressor:
             return []
 
         msgs = list(messages)
-        # 阶段 0: 达标检查
         if count_tokens(msgs) <= self.token_budget:
-            return msgs
+            return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 1: 工具结果精简
         msgs = compact_tool_messages(msgs, max_tool_chars=self.max_tool_chars)
         if count_tokens(msgs) <= self.token_budget:
-            return msgs
+            return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 2: 大模型/结构化摘要
         if len(msgs) > self.keep_recent_messages:
             msgs = summarize_messages_sync(
                 msgs,
@@ -313,16 +357,15 @@ class TokenBudgetComposedCompressor:
                 summary_model=self.summary_model,
             )
             if count_tokens(msgs) <= self.token_budget:
-                return msgs
+                return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 3: 兜底硬截断 (保留最近并在 HumanMessage 对齐)
         msgs = trim_history(
             msgs,
             max_tokens=self.token_budget,
             start_on="human",
             include_system=True,
         )
-        return msgs
+        return self._post_validate_messages(msgs, original_messages=messages)
 
     async def acompress(self, messages: Sequence[BaseMessage]) -> List[BaseMessage]:
         """异步执行多级压缩流程"""
@@ -330,16 +373,13 @@ class TokenBudgetComposedCompressor:
             return []
 
         msgs = list(messages)
-        # 阶段 0: 达标检查
         if count_tokens(msgs) <= self.token_budget:
-            return msgs
+            return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 1: 工具结果精简
         msgs = compact_tool_messages(msgs, max_tool_chars=self.max_tool_chars)
         if count_tokens(msgs) <= self.token_budget:
-            return msgs
+            return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 2: 异步大模型/结构化摘要
         if len(msgs) > self.keep_recent_messages:
             msgs = await summarize_messages_async(
                 msgs,
@@ -347,16 +387,57 @@ class TokenBudgetComposedCompressor:
                 summary_model=self.summary_model,
             )
             if count_tokens(msgs) <= self.token_budget:
-                return msgs
+                return self._post_validate_messages(msgs, original_messages=messages)
 
-        # 阶段 3: 兜底硬截断
         msgs = trim_history(
             msgs,
             max_tokens=self.token_budget,
             start_on="human",
             include_system=True,
         )
-        return msgs
+        return self._post_validate_messages(msgs, original_messages=messages)
+
+    def _post_validate_messages(
+        self,
+        compressed: List[BaseMessage],
+        original_messages: Sequence[BaseMessage],
+    ) -> List[BaseMessage]:
+        """
+        保证最终输出到 OpenAI 的消息链合法性：
+        1. 每一个 ToolMessage 都必须在前面有包含其 tool_call_id 的 AIMessage。
+        2. 任何不是最后一条消息的 AIMessage 如果包含 tool_calls，紧随其后的必须包含对应 tool_call_id 的 ToolMessage。
+        3. 如果最后一条消息是包含 tool_calls 的 AIMessage，从原始消息中把紧跟其后的 ToolMessage 补充进来。
+        """
+        provided_tool_ids = {
+            getattr(m, "tool_call_id", None)
+            for m in compressed
+            if isinstance(m, ToolMessage)
+        }
+
+        orig_tool_map = {
+            getattr(m, "tool_call_id", None): m
+            for m in original_messages
+            if isinstance(m, ToolMessage)
+        }
+
+        fixed = []
+        for i, m in enumerate(compressed):
+            fixed.append(m)
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in provided_tool_ids:
+                        if tc_id in orig_tool_map:
+                            fixed.append(orig_tool_map[tc_id])
+                            provided_tool_ids.add(tc_id)
+                        else:
+                            fixed.append(ToolMessage(
+                                content="[操作执行完毕]",
+                                tool_call_id=tc_id,
+                                name=tc.get("name", "tool")
+                            ))
+                            provided_tool_ids.add(tc_id)
+        return fixed
 
 
 # =====================================================================

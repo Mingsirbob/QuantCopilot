@@ -11,7 +11,7 @@
    - edit: 人工修正参数后执行
    - approve_always: 批准并将该工具加入会话白名单（“记住选择/不再询问”）
 3. 动态白名单策略 (ToolApprovalPolicy)：支持会话级与全局免审批白名单。
-4. 原生 AgentMiddleware 封装 (ToolApprovalMiddleware)。
+4. 原生 AgentMiddleware 封装 (create_approval_middleware)。
 """
 
 import json

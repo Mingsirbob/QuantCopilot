@@ -1,5 +1,5 @@
 """
-Agent 配置定义模块
+Agent 配置定义模块 (Runtime Config)
 提供 AgentConfig 类，支持通过参数灵活配置模型、工具、提示词与运行策略。
 """
 
@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 from dotenv import load_dotenv
 
-# 加载当前与上级目录的 .env 环境变量
-_config_dir = Path(__file__).resolve().parent
-load_dotenv(_config_dir.parent.parent / ".env")
-load_dotenv(_config_dir.parent / ".env")
+# 加载当前与上级目录的 .env 环境变量 (config.py -> runtime -> core -> backend -> root)
+_curr_path = Path(__file__).resolve()
+load_dotenv(_curr_path.parents[3] / ".env")
+load_dotenv(_curr_path.parents[2] / ".env")
 load_dotenv()
 
 
@@ -56,9 +56,13 @@ class AgentConfig(BaseModel):
 
     # 记忆与调试
     enable_memory: bool = Field(default=True, description="是否启用会话持久化记忆")
+    enable_long_term_memory: bool = Field(
+        default=False,
+        description="是否为此 Agent 开启跨会话长期记忆能力（实体档案库与用户画像偏好）",
+    )
     session_db_path: Optional[str] = Field(
         default=None,
-        description="SQLite 会话数据库路径，默认集中存储于 workspace/sessions.db",
+        description="SQLite 会话数据库路径，默认集中存储于 workspace/runtime/sessions/sessions.db",
     )
     debug: bool = Field(default=False, description="是否开启调试输出")
 
@@ -69,7 +73,7 @@ class AgentConfig(BaseModel):
     )
     sandbox_dir: Optional[str] = Field(
         default=None,
-        description="自定义沙箱工作空间根目录，若不指定则默认为 workspace/sandboxes/{agent_name}",
+        description="自定义沙箱工作空间根目录，若不指定则默认为 workspace/runtime/sandboxes/{agent_name}",
     )
 
     # 智能上下文压缩机制 (5大核心策略)

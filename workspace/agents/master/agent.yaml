@@ -1,0 +1,42 @@
+name: "MasterOrchestratorAgent"
+version: "1.0.0"
+description: "系统最高指挥官与全局中枢智能体，拥有跨会话长期记忆能力，负责理解全局意图、拆解多阶段任务、委派调度专家智能体、审查交付研报并沉淀认知"
+
+# 模型选型：采用最高智力旗舰主力模型
+model:
+  provider: "openai"
+  model_name: "gpt-5.6-luna"
+  temperature: 0.0
+
+# 运行必需的环境变量
+required_env: []
+
+# 依赖的 MCP 服务（主控侧通过委派调用子 Agent，无需直接绑定行情 MCP）
+mcp_servers: []
+
+# 绑定的公共/专用技能包
+skills: []
+
+# 特性支持
+enable_memory: true               # 会话内短期多轮对话记忆
+enable_long_term_memory: true     # 🌟 开启跨会话长期记忆能力（用户画像偏好 + 标的档案库）
+enable_todo_list: true            # 开启长任务规划看板与跟踪
+enable_code_sandbox: true         # 开启辅助沙箱与本地文件能力
+
+# 工具配置清单
+tools:
+  - delegate_to_subagent
+  - recall_entity_memory
+  - save_entity_memory
+  - append_user_preference
+  - read_file
+  - list_files
+  - calculate
+  - get_current_time
+
+# 核心能力清单
+capabilities:
+  - "用户交互统一总入口：深度理解复杂金融/量化诉求，给出高格局统筹规划"
+  - "长期记忆中枢：跨会话维护用户投资画像与偏好，沉淀与跟踪个股/标的历史研报档案"
+  - "智能任务拆解与委派：主动编排 data_scraper 抓取行情、data_analyst 精算指标并综合研判"
+  - "全流程质检与研报合成：审查子智能体产物，生成高确定性、结构化量化综合研报"

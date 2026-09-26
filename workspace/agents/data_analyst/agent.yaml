@@ -14,17 +14,24 @@ required_env: []
 # 依赖的 MCP 服务（纯本地分析无需外部 MCP，保持空列表）
 mcp_servers: []
 
-# 绑定的专用 SOP / 技能文档
+# 绑定的专用技能包 (从 workspace/skills/ 共享仓库加载)
 skills:
-  - "./skills/trend_analysis_sop.md"
+  - "@skills/trend_analysis"
+
 
 # 特性支持
 enable_memory: true
 enable_code_sandbox: true
 enable_todo_list: true
 
+# 工具配置清单 (专注本地分析专业工具与沙箱)
+tools:
+  - read_kline_json
+  - calculate_trend_indicators
+
 # 核心能力清单
 capabilities:
   - "读取与校验本地历史 K 线 JSON 格式数据"
   - "计算 5 日均线(MA5)、区间涨跌幅、极值振幅与量价配合度"
-  - "综合研判短期走势趋势（向上 / 向下 / 震荡盘整），并输出结构化量化归因"
+  - "运用量化技术指标进行短期走势研判（向上 / 向下 / 震荡盘整），并输出结构化归因报告"
+

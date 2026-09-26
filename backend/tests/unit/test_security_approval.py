@@ -20,9 +20,7 @@ backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from core.config import AgentConfig
-from core.builder import build_agent
-from core.security import ToolApprovalPolicy
+from core import AgentConfig, build_agent, ToolApprovalPolicy
 
 
 @tool

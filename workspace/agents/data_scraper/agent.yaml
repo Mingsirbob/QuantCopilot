@@ -26,9 +26,10 @@ mcp_servers:
     headers:
       X-api-key: "${Financial-API-KEY}"
 
-# 绑定的专用 SOP / 技能文档
+# 绑定的专用技能包 (从 workspace/skills/ 共享仓库加载)
 skills:
-  - "./skills/financial_data_fetch_sop.md"
+  - "@skills/financial_data_fetch"
+
 
 # 特性支持
 enable_memory: true

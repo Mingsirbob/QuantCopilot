@@ -1,5 +1,5 @@
 """
-会话持久化与管理模块 (集中存储于 workspace/sessions.db)
+会话持久化与管理模块 (集中存储于 workspace/runtime/sessions/sessions.db)
 原生异步架构：
 1. 采用 aiosqlite + AsyncSqliteSaver，完美适配 LangGraph ainvoke / arun 原生异步链路
 2. 集中维护 sessions_meta 业务元数据表 (会话标题、创建时间、最后更新时间)
@@ -19,7 +19,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 class SessionManager:
     """
     全局会话持久化与标题管理器。
-    默认集中管理 workspace/sessions.db 文件。
+    默认集中管理 workspace/runtime/sessions/sessions.db 文件。
     """
 
     _instance: Optional["SessionManager"] = None
@@ -32,7 +32,8 @@ class SessionManager:
             if env_ws:
                 root_ws = Path(env_ws).resolve()
             else:
-                project_root = Path(__file__).resolve().parent.parent.parent
+                # 寻找项目根目录 (向上4级: session.py -> memory -> core -> backend -> project_root)
+                project_root = Path(__file__).resolve().parents[3]
                 root_ws = project_root / "workspace"
 
             runtime_sessions_dir = root_ws / "runtime" / "sessions"
@@ -55,8 +56,16 @@ class SessionManager:
     @classmethod
     async def get_instance(cls, db_path: Optional[str] = None) -> "SessionManager":
         """异步单例工厂方法"""
+        import asyncio
+        cur_loop = asyncio.get_running_loop()
+        if cls._instance is not None:
+            # 检查绑定的 loop 是否为当前测试/执行的 loop，若跨 loop 则安全重置单例
+            if getattr(cls._instance, "_loop", None) is not cur_loop:
+                cls._instance = None
+
         if cls._instance is None:
             cls._instance = cls(db_path)
+            cls._instance._loop = cur_loop
             await cls._instance.initialize()
         return cls._instance
 

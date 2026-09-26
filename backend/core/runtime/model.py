@@ -1,5 +1,5 @@
 """
-模型初始化模块
+模型初始化模块 (Runtime Model Loader)
 根据 AgentConfig 参数实例化标准 LangChain ChatModel。
 """
 
@@ -8,7 +8,7 @@ from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
-from core.config import AgentConfig
+from core.runtime.config import AgentConfig
 
 
 def create_chat_model(config: AgentConfig) -> BaseChatModel:

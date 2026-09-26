@@ -34,7 +34,7 @@ if sys.platform == "win32":
         pass
 
 from agents import load_agent, list_available_agents
-from core.builder import StandaloneAgent
+from core import StandaloneAgent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
@@ -272,12 +272,12 @@ async def main():
     print("🚀 正在启动 MultiAgent 对话终端...")
     print(f"📦 可用智能体清单: {available}")
 
-    # 默认选择 data_analyst 智能体（或由命令行参数传入）
-    selected_agent = "data_analyst"
+    # 默认优先选择主控智能体 master（或由命令行参数传入特定 Agent）
+    selected_agent = "master"
     if len(sys.argv) > 1 and sys.argv[1] in available:
         selected_agent = sys.argv[1]
-    elif "data_analyst" not in available and available:
-        selected_agent = available[0]
+    elif "master" not in available and available:
+        selected_agent = "data_analyst" if "data_analyst" in available else available[0]
 
     print(f"🎯 正在加载目标智能体: \033[1;36m{selected_agent}\033[0m ...")
     agent = await load_agent(selected_agent)

@@ -1,5 +1,5 @@
 """
-Agent 核心构建器与运行包装器
+Agent 核心构建器与运行包装器 (Runtime Builder)
 提供 StandaloneAgent 封装类与 build_agent 工厂函数。
 """
 
@@ -10,12 +10,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-from core.config import AgentConfig
-from core.context_compression import ContextCompressionMiddleware, TokenBudgetComposedCompressor
-from core.model import create_chat_model
+from core.runtime.config import AgentConfig
+from core.runtime.model import create_chat_model
+from core.memory import ContextCompressionMiddleware, TokenBudgetComposedCompressor, SessionManager
 from core.sandbox import AgentSandbox
 from core.security import ToolApprovalPolicy, create_approval_middleware
-from core.session_manager import SessionManager
 
 
 class StandaloneAgent:
@@ -122,6 +121,8 @@ class StandaloneAgent:
             return None
         sessions = self.session_manager.list_sessions_sync(self.config.name)
         for s in sessions:
+            if s["session_id"] == thread_id:
+                return s["title"]
             if s["session_id"] == thread_id:
                 return s["title"]
         return None
