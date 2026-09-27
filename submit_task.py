@@ -26,7 +26,18 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-DEFAULT_SERVER_URL = "http://127.0.0.1:8765"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+project_root = Path(__file__).resolve().parent
+load_dotenv(project_root / ".env")
+load_dotenv(project_root / "backend" / ".env")
+
+# 优先读取环境变量，支持与服务端无缝联动
+default_host = os.getenv("SCHEDULER_HOST", "127.0.0.1")
+default_port = os.getenv("SCHEDULER_PORT", "8765")
+DEFAULT_SERVER_URL = os.getenv("SCHEDULER_SERVER_URL", f"http://{default_host}:{default_port}")
 
 
 def check_server(client: httpx.Client, base_url: str) -> bool:
@@ -41,15 +52,33 @@ def check_server(client: httpx.Client, base_url: str) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="MultiAgent 调度中枢客户端 (Task Submitter)")
     parser.add_argument("--server", type=str, default=DEFAULT_SERVER_URL, help=f"调度服务器地址 (默认: {DEFAULT_SERVER_URL})")
-    parser.add_argument("--agent", type=str, default=None, help="目标 Agent 名称 (例如: data_analyst)")
-    parser.add_argument("--prompt", type=str, default=None, help="传递给 Agent 的指令或提示词")
-    parser.add_argument("--delay", type=int, default=0, help="延时秒数 (默认 0 即立即触发，例如 300 代表 5 分钟后)")
-    parser.add_argument("--run-task", type=str, default=None, help="立即在服务端触发已注册的任务 (例如: quant_indicator_calc)")
-    parser.add_argument("--list", action="store_true", help="列出服务端已注册的任务与当前排班作业")
-    parser.add_argument("--ledger", action="store_true", help="查看服务端最近的任务执行账本")
+
+    # 互斥动作组：同一时间只允许执行一种调度动作
+    action_group = parser.add_mutually_exclusive_group()
+    action_group.add_argument("--list", action="store_true", help="列出服务端已注册的任务与当前排班作业")
+    action_group.add_argument("--ledger", action="store_true", help="查看服务端最近的任务执行账本")
+    action_group.add_argument("--run-task", type=str, default=None, metavar="TASK_NAME", help="立即在服务端触发已注册的任务 (例如: quant_indicator_calc)")
+    action_group.add_argument("--agent", type=str, default=None, metavar="AGENT_NAME", help="目标 Agent 名称 (例如: data_analyst)")
+
+    # Agent 关联参数
+    parser.add_argument("--prompt", type=str, default=None, help="传递给 Agent 的指令或提示词 (仅配合 --agent 使用)")
+    parser.add_argument("--delay", type=int, default=0, help="延时秒数 (默认 0 即立即触发，仅配合 --agent 使用)")
 
     args = parser.parse_args()
+
+    # 参数合法性关联校验
+    if not args.agent:
+        if args.delay > 0:
+            parser.error("--delay 参数必须与 --agent 配合使用")
+        if args.prompt:
+            parser.error("--prompt 参数必须与 --agent 配合使用")
+
     base_url = args.server.rstrip("/")
+
+    # 若无任何动作参数，打印帮助
+    if not (args.list or args.ledger or args.run_task or args.agent):
+        parser.print_help()
+        return
 
     with httpx.Client() as client:
         # 1. 验证服务器连通性
@@ -64,7 +93,11 @@ def main():
         # 2. 查看当前任务清单 (--list)
         if args.list:
             resp = client.get(f"{base_url}/api/tasks", timeout=5.0)
-            data = resp.json().get("data", {})
+            if resp.status_code != 200:
+                print(f"❌ 获取任务清单失败 (HTTP {resp.status_code}): {resp.text}")
+                sys.exit(1)
+
+            data = resp.json().get("data") or {}
             print("=" * 70)
             print("📋 【调度服务器当前可用任务清单】:")
             for t in data.get("tasks", []):
@@ -81,7 +114,11 @@ def main():
         # 3. 查看账本记录 (--ledger)
         if args.ledger:
             resp = client.get(f"{base_url}/api/ledger?limit=10", timeout=5.0)
-            runs = resp.json().get("data", [])
+            if resp.status_code != 200:
+                print(f"❌ 获取账本失败 (HTTP {resp.status_code}): {resp.text}")
+                sys.exit(1)
+
+            runs = resp.json().get("data") or []
             print("=" * 70)
             print(f"📜 【调度服务器最近 {len(runs)} 条执行历史】:")
             for r in runs:
@@ -101,7 +138,8 @@ def main():
                 print(f"✅ 成功！服务端已接收任务 [{args.run_task}] 并在后台执行。")
                 print("💡 你可以在服务端的终端窗口查看实时产物，或稍后通过 '--ledger' 查看执行记录。")
             else:
-                print(f"❌ 触发失败: {resp.text}")
+                print(f"❌ 触发失败 (HTTP {resp.status_code}): {resp.text}")
+                sys.exit(1)
             return
 
         # 5. 提交 Agent 任务 (--agent)
@@ -117,25 +155,24 @@ def main():
             resp = client.post(f"{base_url}/api/tasks/submit-agent", json=payload, timeout=5.0)
 
             if resp.status_code == 200:
-                res_data = resp.json().get("data", {})
+                res_data = resp.json().get("data") or {}
                 print("=" * 70)
                 print("🎉 【任务提交成功！】")
                 print(f"  • 目标智能体: {args.agent}")
                 print(f"  • 指令内容: {prompt}")
                 if args.delay > 0:
                     print(f"  • 倒计时: 将在 {args.delay} 秒后由服务端自动唤醒执行")
-                    print(f"  • 预计执行时间: {res_data.get('scheduled_execution_time')}")
-                    print(f"  • 服务端作业编号: {res_data.get('job_id')}")
+                    print(f"  • 预计执行时间: {res_data.get('scheduled_execution_time', '未知')}")
+                    print(f"  • 服务端作业编号: {res_data.get('job_id', '未知')}")
                 else:
                     print(f"  • 状态: 已进入服务端后台队列并立即执行")
                 print("\n💡 提示: 客户端已完成派发并退出，你可以随时关闭当前终端，任务将由服务器按时执行。")
                 print("=" * 70)
             else:
-                print(f"❌ 提交失败: {resp.text}")
+                print(f"❌ 提交失败 (HTTP {resp.status_code}): {resp.text}")
+                sys.exit(1)
             return
 
-        # 若无任何参数，打印帮助
-        parser.print_help()
 
 
 if __name__ == "__main__":

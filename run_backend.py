@@ -8,6 +8,9 @@ import subprocess
 from pathlib import Path
 
 if __name__ == "__main__":
-    backend_main = Path(__file__).resolve().parent / "backend" / "main.py"
+    project_root = Path(__file__).resolve().parent
+    backend_main = project_root / "backend" / "main.py"
     cmd = [sys.executable, str(backend_main)] + sys.argv[1:]
-    sys.exit(subprocess.call(cmd))
+    # 显式指定 cwd 为项目根目录，防止跨目录调用时相对路径查找失败
+    sys.exit(subprocess.call(cmd, cwd=str(project_root)))
+

@@ -50,13 +50,13 @@ from scheduler import TaskScheduler
 from scheduler.server import create_scheduler_app
 
 
-def run_standalone_once(task_name: str, config_path: Path):
+def run_standalone_once(task_name: str, config_path: Path) -> bool:
     """单次独立调试运行 (不启动 Web Server)"""
     scheduler = TaskScheduler()
     if config_path.exists():
         scheduler.load_from_yaml(config_path)
 
-    async def _runner():
+    async def _runner() -> bool:
         print(f"\n⚡ 【手动单次调试模式】正在执行任务: {task_name}...")
         result = await scheduler.trigger_now(task_name)
         print("\n" + "=" * 75)
@@ -73,11 +73,15 @@ def run_standalone_once(task_name: str, config_path: Path):
                 await SessionManager._instance.close()
         except Exception:
             pass
+        return bool(result.success)
 
-    asyncio.run(_runner())
+    return asyncio.run(_runner())
 
 
 def main():
+    default_host = os.getenv("SCHEDULER_HOST", "127.0.0.1")
+    default_port = int(os.getenv("SCHEDULER_PORT", "8765"))
+
     parser = argparse.ArgumentParser(description="MultiAgent 任务调度中枢 (Server Daemon)")
     parser.add_argument(
         "--config",
@@ -94,14 +98,14 @@ def main():
     parser.add_argument(
         "--host",
         type=str,
-        default="127.0.0.1",
-        help="服务端监听地址 (默认: 127.0.0.1)",
+        default=default_host,
+        help=f"服务端监听地址 (默认: {default_host})",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8765,
-        help="服务端监听端口 (默认: 8765)",
+        default=default_port,
+        help=f"服务端监听端口 (默认: {default_port})",
     )
     args = parser.parse_args()
 
@@ -109,9 +113,9 @@ def main():
 
     # 1. 若为单次调试模式，不启动 Web 服务直接执行
     if args.run_once:
-        run_standalone_once(args.run_once, config_path)
+        success = run_standalone_once(args.run_once, config_path)
         sys.stdout.flush()
-        os._exit(0)
+        sys.exit(0 if success else 1)
 
     # 2. 正常模式：启动 FastAPI + Uvicorn 调度中枢服务端
     import uvicorn
@@ -138,12 +142,12 @@ def main():
 
     try:
         server.run()
-    except KeyboardInterrupt:
-        print("\n🛑 收到退出信号，正在安全关闭调度引擎...")
+    except (KeyboardInterrupt, SystemExit):
+        print("\n🛑 收到退出信号，调度服务器已安全关闭。")
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
-        os._exit(0)
+
 
 
 if __name__ == "__main__":
