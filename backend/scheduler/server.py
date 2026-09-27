@@ -92,6 +92,18 @@ def create_scheduler_app(
     )
     app.state.scheduler = scheduler
 
+
+    # 挂载 CORS 跨域中间件，支持 React / Vite 前端看板交互
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
     # -----------------------------------------------------------------
     # API 路由
     # -----------------------------------------------------------------

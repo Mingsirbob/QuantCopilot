@@ -1,47 +1,42 @@
 # ===================================================================
 # MultiAgent 统一声明式任务调度配置文件 (schedule.yaml)
-# 支持调度 Agent、原生 Python 分析模块与外部脚本。
-# 触发器语法:
-#   - "cron: 分 时 日 月 周" (例如 "cron: 30 8 * * 1-5" 代表每个交易日 08:30)
-#   - "interval: 秒数"      (例如 "interval: 300" 代表每 5 分钟轮询一次)
+# 
+# 任务定义结构示例:
+# 
+# 1. 原生 Python 分析模块任务:
+#   - name: my_calc_task
+#     type: module
+#     target: "workspace.modules.my_module:my_function"
+#     trigger: "cron: 30 8 * * 1-5"   # 交易日 08:30 触发
+# 
+# 2. 独立外部脚本任务:
+#   - name: my_script_task
+#     type: script
+#     script_path: "workspace/scripts/my_script.py"
+#     trigger: "interval: 60"          # 每 60 秒轮询一次
+# 
+# 3. 智能体 Agent 任务:
+#   - name: my_agent_task
+#     type: agent
+#     agent_name: data_analyst         # 对应 workspace/agents/ 下目录名
+#     prompt: "请执行分析任务..."
+#     trigger: "cron: 0 9 * * 1-5"     # 交易日 09:00 触发
 # ===================================================================
 
 schedules:
   # -----------------------------------------------------------------
-  # 任务 1：原生 Python 分析模块 (计算量化指标，0 Token 毫秒级计算)
+  # 任务 1：个股盘口逐笔异动实时监测任务 (外部脚本)
   # -----------------------------------------------------------------
-  - name: quant_indicator_calc
-    type: module
-    target: "workspace.modules.quant.indicators:calculate_kline_indicators"
-    params:
-      file_path: "workspace/data/maotai_5d_kline.json"
-    trigger: "cron: 30 8 * * 1-5"
-
-  # -----------------------------------------------------------------
-  # 任务 2：独立 Python 脚本任务 (拉取宏观早间要闻)
-  # -----------------------------------------------------------------
-  - name: morning_news_fetch
+  - name: stock_price_monitor
     type: script
-    script_path: "workspace/scripts/example_fetch.py"
-    trigger: "cron: 35 8 * * 1-5"
+    script_path: "workspace/scripts/stock_monitor.py"
+    description: "五粮液(000858.SZ) 盘口逐笔异动实时监测脚本 (按需或条件启动)"
 
   # -----------------------------------------------------------------
-  # 任务 3：Agent 研报撰写任务 (调用数据分析智能体)
+  # 任务 2：个股异动深度调研 Agent (固定任务，由监测脚本触发)
   # -----------------------------------------------------------------
-  - name: daily_analyst_report
+  - name: stock_anomaly_analyst
     type: agent
     agent_name: data_analyst
-    prompt: "请根据最新的 5 日行情走势，研判贵州茅台的短期走势趋势，并生成开盘前瞻建议。"
-    thread_id: "scheduled_daily_report_session"
-    trigger: "cron: 45 8 * * 1-5"
-
-  # -----------------------------------------------------------------
-  # 任务 4：轻量心跳监测任务 (开启交易时段感知与 HEARTBEAT_OK 静默)
-  # -----------------------------------------------------------------
-  - name: market_heartbeat_monitor
-    type: agent
-    agent_name: data_scraper
-    prompt: "请检查贵州茅台的最新行情快照。若涨跌幅在正常范围（绝对值未超过3%），请直接回复 'HEARTBEAT_OK'；若异常请告警。"
-    thread_id: "intraday_heartbeat_session"
-    filter_trading_hours: true
-    trigger: "interval: 300"
+    prompt: "{prompt}"
+    description: "个股异动深度调研分析 Agent (待命中，复用固定任务模板)"

@@ -1,0 +1,32 @@
+[
+  {
+    "symbol": "000858.SZ",
+    "name": "五粮液",
+    "timestamp": "10:01:00",
+    "price": 137.20,
+    "volume_lots": 150,
+    "amount_cny": 2058000,
+    "direction": "NEUTRAL",
+    "desc": "常态平缓波动，未突破均价线"
+  },
+  {
+    "symbol": "000858.SZ",
+    "name": "五粮液",
+    "timestamp": "10:01:03",
+    "price": 137.35,
+    "volume_lots": 280,
+    "amount_cny": 3845800,
+    "direction": "BUY",
+    "desc": "小幅主动买单，筹码换手平稳"
+  },
+  {
+    "symbol": "000858.SZ",
+    "name": "五粮液",
+    "timestamp": "10:01:06",
+    "price": 138.80,
+    "volume_lots": 5600,
+    "amount_cny": 77728000,
+    "direction": "STRONG_BUY",
+    "desc": "💥 突破日内关键阻力位 138.50，单笔放量 5600 手（成交额超 7700 万元），资金瞬时净流入飙升！"
+  }
+]
