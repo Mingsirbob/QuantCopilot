@@ -14,6 +14,13 @@ from core.tools.memory import (
     append_user_preference,
     MEMORY_TOOLS,
 )
+from core.tools.scheduler import (
+    schedule_agent_task,
+    trigger_registered_task,
+    list_scheduled_jobs,
+    inspect_scheduler_ledger,
+    SCHEDULER_TOOLS,
+)
 
 # 默认全局内置工具列表
 DEFAULT_TOOLS = [
@@ -23,6 +30,10 @@ DEFAULT_TOOLS = [
     recall_entity_memory,
     save_entity_memory,
     append_user_preference,
+    schedule_agent_task,
+    trigger_registered_task,
+    list_scheduled_jobs,
+    inspect_scheduler_ledger,
 ]
 
 __all__ = [
@@ -34,5 +45,10 @@ __all__ = [
     "save_entity_memory",
     "append_user_preference",
     "MEMORY_TOOLS",
+    "schedule_agent_task",
+    "trigger_registered_task",
+    "list_scheduled_jobs",
+    "inspect_scheduler_ledger",
+    "SCHEDULER_TOOLS",
     "DEFAULT_TOOLS",
 ]

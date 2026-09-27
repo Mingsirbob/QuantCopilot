@@ -43,6 +43,11 @@ from core.tools import (
     recall_entity_memory,
     save_entity_memory,
     append_user_preference,
+    schedule_agent_task,
+    trigger_registered_task,
+    list_scheduled_jobs,
+    inspect_scheduler_ledger,
+    SCHEDULER_TOOLS,
 )
 
 __all__ = [
@@ -66,10 +71,15 @@ __all__ = [
     # tools
     "DEFAULT_TOOLS",
     "MEMORY_TOOLS",
+    "SCHEDULER_TOOLS",
     "get_current_time",
     "calculate",
     "delegate_to_subagent",
     "recall_entity_memory",
     "save_entity_memory",
     "append_user_preference",
+    "schedule_agent_task",
+    "trigger_registered_task",
+    "list_scheduled_jobs",
+    "inspect_scheduler_ledger",
 ]

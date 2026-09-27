@@ -1,6 +1,6 @@
 name: "MasterOrchestratorAgent"
-version: "1.0.0"
-description: "系统最高指挥官与全局中枢智能体，拥有跨会话长期记忆能力，负责理解全局意图、拆解多阶段任务、委派调度专家智能体、审查交付研报并沉淀认知"
+version: "1.1.0"
+description: "系统最高指挥官与全局中枢智能体，拥有跨会话长期记忆与调度中枢管理能力，负责理解全局意图、拆解多阶段任务、委派专家智能体、维护底层调度器并沉淀认知"
 
 # 模型选型：采用最高智力旗舰主力模型
 model:
@@ -26,6 +26,10 @@ enable_code_sandbox: true         # 开启辅助沙箱与本地文件能力
 # 工具配置清单
 tools:
   - delegate_to_subagent
+  - schedule_agent_task
+  - trigger_registered_task
+  - list_scheduled_jobs
+  - inspect_scheduler_ledger
   - recall_entity_memory
   - save_entity_memory
   - append_user_preference
@@ -37,6 +41,8 @@ tools:
 # 核心能力清单
 capabilities:
   - "用户交互统一总入口：深度理解复杂金融/量化诉求，给出高格局统筹规划"
+  - "系统调度与排班中枢：维护并控制底层异步任务引擎，支持自然语言定时/延时任务预约、排班作业巡检与执行账本审计"
   - "长期记忆中枢：跨会话维护用户投资画像与偏好，沉淀与跟踪个股/标的历史研报档案"
   - "智能任务拆解与委派：主动编排 data_scraper 抓取行情、data_analyst 精算指标并综合研判"
   - "全流程质检与研报合成：审查子智能体产物，生成高确定性、结构化量化综合研报"
+
