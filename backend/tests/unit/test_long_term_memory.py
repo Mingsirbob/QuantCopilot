@@ -79,12 +79,17 @@ async def test_master_agent_loading_with_long_term_memory():
     assert "总指挥智能体（Master Orchestrator Agent）" in prompt
 
     # 2. 验证 Master 智能体完整构建
-    master = await loader.load_agent("master")
-    assert master.config.enable_long_term_memory is True
-    tool_names = [getattr(t, "name", str(t)) for t in master.config.tools]
+    from core.memory import SessionManager
+    try:
+        master = await loader.load_agent("master")
+        assert master.config.enable_long_term_memory is True
+        tool_names = [getattr(t, "name", str(t)) for t in master.config.tools]
 
-    # 验证关键主控工具均已就绪
-    assert "delegate_to_subagent" in tool_names
-    assert "recall_entity_memory" in tool_names
-    assert "save_entity_memory" in tool_names
-    assert "append_user_preference" in tool_names
+        # 验证关键主控工具均已就绪
+        assert "delegate_to_subagent" in tool_names
+        assert "recall_entity_memory" in tool_names
+        assert "save_entity_memory" in tool_names
+        assert "append_user_preference" in tool_names
+    finally:
+        if SessionManager._instance:
+            await SessionManager._instance.close()

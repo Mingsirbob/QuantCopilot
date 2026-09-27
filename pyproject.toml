@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "apscheduler>=3.11.3",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
     "langchain>=1.4.2",
     "langchain-mcp-adapters>=0.3.2",
     "langchain-openai>=1.6.4",
@@ -13,4 +16,6 @@ dependencies = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "python-dotenv>=1.2.3",
+    "pyyaml>=6.0.3",
+    "uvicorn>=0.53.0",
 ]

@@ -123,22 +123,29 @@ OpenClaw 通过心跳机制实现了真正的“主动智能（Proactive Agent�
 #### (5) 适配 A 股交易时钟感知（Trading Hours Filter）
 * **设计**：结合本项目已有 A 股交易日历能力，实现智能活动窗口：仅在交易日开盘时段（`09:30~11:30, 13:00~15:00`）激活高频心跳，盘前执行一次早盘巡检，休市与周末自动休眠。
 
-#### (6) 推荐实施路径
-在 `backend/` 下开发一个轻量级的 `HeartbeatScheduler` 异步后台任务组件，集成在主程序或独立守护进程中，无缝串接现有的 `load_agent` 与 `SessionManager`。
+#### (6) 实施完成状态与模块落地
+已在 `backend/scheduler/` 下完整落地统一异步调度引擎与执行器族 (C/S 客户端-服务端架构)：
+* **调度器核心**：[`TaskScheduler`](file:///backend/scheduler/engine.py) (基于 APScheduler 与原生 AsyncIO 事件循环)
+* **REST API 服务端**：[`create_scheduler_app`](file:///backend/scheduler/server.py) (基于 FastAPI 构建，提供 Swagger UI 与远程任务提交)
+* **客户端交互工具**：[`submit_task.py`](file:///submit_task.py) (跨终端快速提交、排班、查询任务与账本)
+* **执行器适配族**：[`AgentTask`](file:///backend/scheduler/tasks/agent_task.py)、[`ModuleTask`](file:///backend/scheduler/tasks/module_task.py)、[`ScriptTask`](file:///backend/scheduler/tasks/script_task.py)、[`PipelineTask`](file:///backend/scheduler/tasks/pipeline_task.py)
+* **状态持久化账本**：[`TaskLedger`](file:///backend/scheduler/ledger.py) (SQLite 账本存储于 `workspace/runtime/scheduler/ledger.db`)
+* **时钟与静默过滤**：[`TradingHoursFilter`](file:///backend/scheduler/filters.py) (A股交易窗口感知) 与 [`SilenceChecker`](file:///backend/scheduler/filters.py) (`HEARTBEAT_OK` 静默防骚扰)
+* **声明式配置文件**：`workspace/schedules/schedule.yaml`
 
 ---
 
 ## 五、常用工程化调试指令
 
 ```bash
-# 1. 运行核心单元测试
+# 1. 运行全套单元测试 (含最新调度服务端与各模块 32 项测试全部通过)
 uv run pytest backend/tests/unit/
 
-# 2. 运行端到端集成测试 (验证 SQLite 会话持久化与标题自动生成)
-uv run pytest backend/tests/integration/test_sessions_e2e.py
+# 2. 运行调度系统专属测试 (8 项测试)
+uv run pytest backend/tests/unit/test_scheduler.py
 
-# 3. 运行全套测试套件
-uv run pytest backend/tests/
+# 3. 运行端到端集成测试 (验证 SQLite 会话持久化与标题自动生成)
+uv run pytest backend/tests/integration/test_sessions_e2e.py
 
 # 4. 执行后端主流程演示 (加载两个 Agent 并演示抓取与研报生成)
 uv run python run_backend.py
@@ -147,5 +154,21 @@ uv run python run_backend.py
 uv run python chat.py
 # 或指定目标智能体：
 uv run python chat.py data_analyst
+
+# 6. 【终端 1】：启动常驻调度中枢服务器 (监听 http://127.0.0.1:8765)
+uv run python run_scheduler.py
+
+# 7. 【终端 2】：向常驻服务器随时提交任务 (提交后 0.1s 立即退出，不卡死)
+# 预约 5 分钟后由服务端自动分析茅台
+uv run python submit_task.py --agent data_analyst --prompt "请读取 'workspace/data/maotai_5d_kline.json' 分析茅台走势" --delay 300
+# 查看服务器当前激活的任务与作业
+uv run python submit_task.py --list
+# 查看服务器最近的历史运行账本
+uv run python submit_task.py --ledger
+# 立即触发服务端某个已注册的任务
+uv run python submit_task.py --run-task quant_indicator_calc
+
+# 8. 本地单次快速测试 (不启动 Web Server)
+uv run python run_scheduler.py --run-once quant_indicator_calc
 ```
 
