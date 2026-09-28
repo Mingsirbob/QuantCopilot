@@ -201,7 +201,7 @@ export default function App() {
             <Cpu size={24} color="#ffffff" />
           </div>
           <div>
-            <h1 className="brand-title">MultiAgent 统一中枢大屏</h1>
+            <h1 className="brand-title">QuantCopilot 统一中枢大屏</h1>
             <p className="brand-subtitle">INTELLIGENT TASK SCHEDULER & SRE OPS MONITOR</p>
           </div>
         </div>
